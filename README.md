@@ -8,6 +8,8 @@ The folder `ML Import 2026-09-18` was created through the Multilogin web UI. The
 
 ## Run on Windows (Python 3.10+)
 
+Simplest route: download this repository with Code > Download ZIP, extract it, keep Multilogin running, and double-click `START.cmd`. Select the CSV and enter an existing automation token at the hidden local prompt. The starter installs Playwright from PyPI, provisions the first 50, then runs warming. No token or CSV is uploaded to GitHub. The command-line alternatives below remain available. Python 3.10+ must already be installed.
+
 Keep the original `ML list.csv` outside this public repository. Open a terminal in the downloaded code folder:
 
 ```powershell

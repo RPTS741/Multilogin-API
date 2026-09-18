@@ -1,0 +1,6 @@
+*.csv
+*.sqlite*
+state/
+.env*
+__pycache__/
+*.log

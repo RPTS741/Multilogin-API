@@ -61,13 +61,19 @@ def notes(row):
     return '\n'.join(f'{k}: {v}' for k, v in row.items() if k not in ('Email', 'Proxy'))
 
 def payload(row, folder):
+    proxy_settings = proxy(row['Proxy'])
     return dict(name=row['Email'], browser_type='mimic', os_type='windows',
         folder_id=folder, times=1, notes=notes(row), parameters=dict(
             flags=FLAGS.copy(), storage={'is_local': False}, fingerprint={},
-            proxy=proxy(row['Proxy'])))
+            proxy=proxy_settings.copy()), proxy=proxy_settings)
 
 def signature(row, folder):
-    return hashlib.sha256(json.dumps(payload(row, folder), sort_keys=True).encode()).hexdigest()
+    # Preserve compatibility with journals created before the API's top-level
+    # proxy field was also populated. The managed inputs themselves are
+    # unchanged; only their transport shape has been hardened.
+    signed = payload(row, folder)
+    signed.pop('proxy', None)
+    return hashlib.sha256(json.dumps(signed, sort_keys=True).encode()).hexdigest()
 
 class Client:
     def __init__(self, token):

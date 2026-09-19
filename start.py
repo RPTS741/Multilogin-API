@@ -9,6 +9,7 @@ import json
 import urllib.request
 import urllib.error
 import re
+import ctypes
 
 CLIENT_HEADERS={'Content-Type':'application/json','Accept':'application/json',
                 'User-Agent':'Multilogin-API-Client/1.0'}
@@ -51,24 +52,29 @@ def login_token():
 def main():
     if sys.platform != 'win32':
         raise SystemExit('Run this starter on your Windows Multilogin computer.')
-    import tkinter as tk
-    from tkinter.filedialog import askopenfilename
-    root=tk.Tk(); root.withdraw()
-    source=askopenfilename(title='Select the email/proxy CSV',filetypes=[('CSV files','*.csv')])
-    root.destroy()
-    if not source: return
-    os.chdir(Path(__file__).resolve().parent)
-    subprocess.run([sys.executable,'factory.py',source],check=True)
-    print('Press Enter to sign in, or paste an existing automation token.')
-    token=getpass.getpass('Automation token (optional, hidden): ').strip()
-    if not token: token=login_token()
-    env=os.environ.copy(); env['MLX_TOKEN']=token
+    # Keep Windows awake only while this process is active; the setting resets on exit.
+    ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
     try:
-        subprocess.run([sys.executable,'-m','pip','install','playwright'],check=True)
-        subprocess.run([sys.executable,'factory.py',source,'--apply'],env=env,check=True)
-        subprocess.run([sys.executable,'warm.py',source],env=env,check=True)
+        import tkinter as tk
+        from tkinter.filedialog import askopenfilename
+        root=tk.Tk(); root.withdraw()
+        source=askopenfilename(title='Select the email/proxy CSV',filetypes=[('CSV files','*.csv')])
+        root.destroy()
+        if not source: return
+        os.chdir(Path(__file__).resolve().parent)
+        subprocess.run([sys.executable,'factory.py',source],check=True)
+        print('Press Enter to sign in, or paste an existing automation token.')
+        token=getpass.getpass('Automation token (optional, hidden): ').strip()
+        if not token: token=login_token()
+        env=os.environ.copy(); env['MLX_TOKEN']=token
+        try:
+            subprocess.run([sys.executable,'-m','pip','install','playwright'],check=True)
+            subprocess.run([sys.executable,'factory.py',source,'--apply'],env=env,check=True)
+            subprocess.run([sys.executable,'warm.py',source],env=env,check=True)
+        finally:
+            env.pop('MLX_TOKEN',None)
     finally:
-        env.pop('MLX_TOKEN',None)
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
 
 if __name__=='__main__':
     try: main()

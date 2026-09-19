@@ -1,8 +1,9 @@
 @echo off
 setlocal
 cd /d "%~dp0"
+set "CACHE_BUST=%RANDOM%%RANDOM%"
 for %%F in (start.py factory.py warm.py) do (
-  curl.exe -fsSL "https://raw.githubusercontent.com/RPTS741/Multilogin-API/main/%%F" -o "%%F.download"
+  curl.exe -fsSL "https://raw.githubusercontent.com/RPTS741/Multilogin-API/main/%%F?cache=%CACHE_BUST%" -o "%%F.download"
   if errorlevel 1 goto download_failed
   move /Y "%%F.download" "%%F" >nul
 )

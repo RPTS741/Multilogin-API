@@ -28,6 +28,7 @@ class Tests(unittest.TestCase):
         p=payload(ROW,'f')
         self.assertEqual(p['name'],ROW['Email'])
         self.assertEqual(p['parameters']['proxy']['password'],'pass:colon')
+        self.assertEqual(p['proxy'],p['parameters']['proxy'])
         self.assertIn('PhoneNumber: 00123',p['notes'])
         self.assertNotIn(ROW['Proxy'],p['notes'])
         self.assertFalse(p['parameters']['storage']['is_local'])

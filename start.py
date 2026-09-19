@@ -45,9 +45,9 @@ def login_credentials():
     password=getpass.getpass('Multilogin account password (hidden): ')
     if not email or not password:
         raise SystemExit('Email and password required. Nothing created.')
-    # Prove the credentials now, before any child process is launched.
-    sign_in(email,password)
-    return email,password
+    # Prove the credentials now, before any child process is launched, and
+    # reuse this token for the quick provisioning reconciliation.
+    return email,password,sign_in(email,password)
 
 def main():
     if sys.platform != 'win32':
@@ -67,8 +67,7 @@ def main():
         token=getpass.getpass('Automation token (optional, hidden): ').strip()
         email=password=None
         if not token:
-            email,password=login_credentials()
-            token=sign_in(email,password)
+            email,password,token=login_credentials()
         env=os.environ.copy(); env['MLX_TOKEN']=token
         try:
             subprocess.run([sys.executable,'-m','pip','install','playwright'],check=True)

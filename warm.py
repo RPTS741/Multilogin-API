@@ -25,14 +25,14 @@ class WarmStageError(Exception):
         self.detail = detail
         super().__init__(f'{stage}: {detail}')
 
-def validation_proxy(value):
-    checked = proxy(value).copy()
+def validation_proxy(value, proxy_type='http'):
+    checked = proxy(value, proxy_type).copy()
     checked.pop('save_traffic', None)
     return checked
 
-def repair_profile_proxy(token, row, profile_id):
+def repair_profile_proxy(token, row, profile_id, proxy_type='http'):
     """Rewrite the exact CSV proxy using both supported profile API shapes."""
-    settings = proxy(row['Proxy'])
+    settings = proxy(row['Proxy'], proxy_type)
     body = {
         'profile_id': profile_id,
         'name': row['Email'],
@@ -91,15 +91,7 @@ def local_call(token, path, body=None, stage='launcher'):
         raise WarmStageError(stage, 'missing response data')
     return result['data']
 
-async def visit_profile(pw, token, folder, profile_id, proxy_value, seconds):
-    # Profiles created by older importer releases may have persisted only one
-    # of Multilogin's accepted proxy shapes. Rewrite both before validation.
-    # The caller supplies the full row separately through proxy_value below.
-    # Validate before starting; no direct-network fallback.
-    # The launcher validation endpoint accepts only connection fields. The
-    # create-profile endpoint additionally accepts save_traffic.
-    await asyncio.to_thread(local_call, token, '/api/v1/proxy/validate',
-                            validation_proxy(proxy_value), 'proxy_validation')
+async def visit_profile(pw, token, folder, profile_id, seconds):
     attempted = False
     results=[]
     try:
@@ -185,8 +177,30 @@ async def execute(args, rows, token, db):
             async with gate:
                 db.execute('INSERT INTO warming VALUES (?,?,?)',(pid,'running','[]')); db.commit()
                 try:
-                    await asyncio.to_thread(repair_profile_proxy, token, row, pid)
-                    result=await visit_profile(pw,token,folder,pid,row['Proxy'],args.seconds)
+                    result = None
+                    failures = []
+                    for proxy_type in ('http', 'https', 'socks5'):
+                        try:
+                            await asyncio.to_thread(local_call, token, '/api/v1/proxy/validate',
+                                                    validation_proxy(row['Proxy'], proxy_type),
+                                                    'proxy_validation')
+                            await asyncio.to_thread(repair_profile_proxy, token, row, pid, proxy_type)
+                            result=await visit_profile(pw,token,folder,pid,args.seconds)
+                            break
+                        except WarmStageError as exc:
+                            failures.append(exc)
+                            retryable_browser_proxy_error = (
+                                exc.stage == 'site_visit' and any(exc.detail.endswith(code) for code in (
+                                    'ERR_INVALID_AUTH_CREDENTIALS',
+                                    'ERR_PROXY_CONNECTION_FAILED',
+                                    'ERR_TUNNEL_CONNECTION_FAILED')))
+                            if exc.stage == 'proxy_validation' or retryable_browser_proxy_error:
+                                continue
+                            raise
+                    if result is None:
+                        details={exc.detail for exc in failures}
+                        detail=next(iter(details)) if len(details)==1 else 'all protocols rejected'
+                        raise WarmStageError('proxy_validation',detail)
                     status='completed' if len(result)==len(SITES) and all(x['status']=='visited' for x in result) else 'needs_review'
                 except WarmStageError as exc:
                     status='needs_review'; result=[{'status':'stage_error','stage':exc.stage,'detail':exc.detail}]

@@ -13,6 +13,8 @@ import urllib.error
 import urllib.request
 
 API = 'https://api.multilogin.com'
+CLIENT_HEADERS = {'Content-Type': 'application/json', 'Accept': 'application/json',
+                  'User-Agent': 'Multilogin-API-Client/1.0'}
 FLAGS = dict(audio_masking='natural', fonts_masking='natural',
     geolocation_masking='mask', geolocation_popup='prompt',
     graphics_masking='natural', graphics_noise='natural',
@@ -74,7 +76,7 @@ class Client:
     def call(self, path, body=None):
         request = urllib.request.Request(API + path,
             data=None if body is None else json.dumps(body).encode(),
-            headers={'Authorization': 'Bearer '+self.token, 'Content-Type': 'application/json'})
+            headers={**CLIENT_HEADERS, 'Authorization': 'Bearer '+self.token})
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 result = json.load(response)

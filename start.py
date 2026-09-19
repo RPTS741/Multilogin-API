@@ -10,6 +10,9 @@ import urllib.request
 import urllib.error
 import re
 
+CLIENT_HEADERS={'Content-Type':'application/json','Accept':'application/json',
+                'User-Agent':'Multilogin-API-Client/1.0'}
+
 def login_token():
     print('Sign in locally to obtain a 24-hour automation token. Credentials are not saved.')
     email=input('Multilogin account email: ').strip()
@@ -20,7 +23,7 @@ def login_token():
     del password
     def request(path, data=None, bearer=None):
         stage='Sign-in' if path=='/user/signin' else 'Automation token creation'
-        headers={'Content-Type':'application/json','Accept':'application/json'}
+        headers=CLIENT_HEADERS.copy()
         if bearer: headers['Authorization']='Bearer '+bearer
         req=urllib.request.Request('https://api.multilogin.com'+path,data=data,headers=headers)
         try:

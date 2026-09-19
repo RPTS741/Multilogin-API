@@ -1,4 +1,4 @@
-"""Interactive Windows entry point; token stays in process memory."""
+"""Interactive Windows entry point; credentials and tokens stay in process memory."""
 import getpass
 import os
 from pathlib import Path
@@ -14,40 +14,40 @@ import ctypes
 CLIENT_HEADERS={'Content-Type':'application/json','Accept':'application/json',
                 'User-Agent':'Multilogin-API-Client/1.0'}
 
-def login_token():
-    print('Sign in locally to obtain a 24-hour automation token. Credentials are not saved.')
+def sign_in(email, password):
+    """Return a short-lived sign-in token without persisting credentials."""
+    payload=json.dumps({'email':email,'password':hashlib.md5(password.encode()).hexdigest()}).encode()
+    headers=CLIENT_HEADERS.copy()
+    req=urllib.request.Request('https://api.multilogin.com/user/signin',data=payload,headers=headers)
+    try:
+        with urllib.request.urlopen(req,timeout=45) as response:
+            result=json.load(response)
+        token=result.get('data',{}).get('token')
+        if not isinstance(token,str) or not token:
+            raise SystemExit('Authentication did not return a token. Nothing was changed.')
+        return token
+    except urllib.error.HTTPError as exc:
+        detail='No structured error code returned'
+        try:
+            body=json.loads(exc.read(16384))
+            code=body.get('status',{}).get('error_code')
+            if isinstance(code,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,80}',code):
+                detail='API error code: '+code
+        except (ValueError,AttributeError):
+            pass
+        raise SystemExit('Sign-in failed (HTTP %s). %s. Nothing was changed.' % (exc.code,detail)) from None
+    except (urllib.error.URLError,TimeoutError,ValueError):
+        raise SystemExit('Could not complete Multilogin authentication. Nothing was changed.') from None
+
+def login_credentials():
+    print('Sign in locally. Credentials stay in memory only and are not saved.')
     email=input('Multilogin account email: ').strip()
     password=getpass.getpass('Multilogin account password (hidden): ')
     if not email or not password:
         raise SystemExit('Email and password required. Nothing created.')
-    payload=json.dumps({'email':email,'password':hashlib.md5(password.encode()).hexdigest()}).encode()
-    del password
-    def request(path, data=None, bearer=None):
-        stage='Sign-in' if path=='/user/signin' else 'Automation token creation'
-        headers=CLIENT_HEADERS.copy()
-        if bearer: headers['Authorization']='Bearer '+bearer
-        req=urllib.request.Request('https://api.multilogin.com'+path,data=data,headers=headers)
-        try:
-            with urllib.request.urlopen(req,timeout=45) as response:
-                result=json.load(response)
-            token=result.get('data',{}).get('token')
-            if not isinstance(token,str) or not token:
-                raise SystemExit('Authentication did not return a token. Nothing created; send this message, not your credentials.')
-            return token
-        except urllib.error.HTTPError as exc:
-            detail='No structured error code returned'
-            try:
-                body=json.loads(exc.read(16384))
-                code=body.get('status',{}).get('error_code')
-                if isinstance(code,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,80}',code):
-                    detail='API error code: '+code
-            except (ValueError,AttributeError):
-                pass
-            raise SystemExit('%s failed (HTTP %s). %s. Nothing created.' % (stage,exc.code,detail)) from None
-        except (urllib.error.URLError,TimeoutError,ValueError):
-            raise SystemExit('Could not complete Multilogin authentication. Nothing created.') from None
-    bearer=request('/user/signin',payload)
-    return request('/workspace/automation_token?expiration_period=24h',bearer=bearer)
+    # Prove the credentials now, before any child process is launched.
+    sign_in(email,password)
+    return email,password
 
 def main():
     if sys.platform != 'win32':
@@ -65,14 +65,30 @@ def main():
         subprocess.run([sys.executable,'factory.py',source],check=True)
         print('Press Enter to sign in, or paste an existing automation token.')
         token=getpass.getpass('Automation token (optional, hidden): ').strip()
-        if not token: token=login_token()
+        email=password=None
+        if not token:
+            email,password=login_credentials()
+            token=sign_in(email,password)
         env=os.environ.copy(); env['MLX_TOKEN']=token
         try:
             subprocess.run([sys.executable,'-m','pip','install','playwright'],check=True)
             subprocess.run([sys.executable,'factory.py',source,'--apply'],env=env,check=True)
-            subprocess.run([sys.executable,'warm.py',source,'--retry-needs-review'],env=env,check=True)
+            if email is None:
+                subprocess.run([sys.executable,'warm.py',source,'--retry-needs-review'],env=env,check=True)
+            else:
+                # Sign-in tokens last about 30 minutes. Refresh before every
+                # six-profile chunk; each chunk takes about 12 minutes at
+                # three concurrent profiles. No credentials are written.
+                print('Using automatically refreshed sign-in tokens for the overnight run.')
+                for offset in range(0,50,6):
+                    count=min(6,50-offset)
+                    env['MLX_TOKEN']=sign_in(email,password)
+                    print(f'Starting warming chunk {offset+1}-{offset+count} of 50.',flush=True)
+                    subprocess.run([sys.executable,'warm.py',source,'--offset',str(offset),
+                                    '--count',str(count),'--retry-needs-review'],env=env,check=True)
         finally:
             env.pop('MLX_TOKEN',None)
+            password=None
     finally:
         ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
 

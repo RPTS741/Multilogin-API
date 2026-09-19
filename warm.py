@@ -21,7 +21,8 @@ LAUNCHER = 'https://launcher.mlx.yt:45001'
 def local_call(token, path, body=None):
     req = urllib.request.Request(LAUNCHER+path,
         data=None if body is None else json.dumps(body).encode(),
-        headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+        headers={'Authorization':'Bearer '+token,'Content-Type':'application/json',
+                 'Accept':'application/json','User-Agent':'Multilogin-API-Client/1.0'})
     try:
         with urllib.request.urlopen(req, timeout=90) as r: result=json.load(r)
     except (OSError, ValueError):

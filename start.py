@@ -70,7 +70,7 @@ def main():
         try:
             subprocess.run([sys.executable,'-m','pip','install','playwright'],check=True)
             subprocess.run([sys.executable,'factory.py',source,'--apply'],env=env,check=True)
-            subprocess.run([sys.executable,'warm.py',source],env=env,check=True)
+            subprocess.run([sys.executable,'warm.py',source,'--retry-needs-review'],env=env,check=True)
         finally:
             env.pop('MLX_TOKEN',None)
     finally:

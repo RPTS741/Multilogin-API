@@ -1,5 +1,6 @@
 import sqlite3
 import unittest
+from warm import validation_proxy
 from factory import FLAGS, FactoryError, notes, payload, proxy, run
 
 ROW = dict(Email='test@example.com', Password='secret', Proxy='example.com:8080:user:pass:colon', CODE='', PhoneNumber='00123')
@@ -52,5 +53,9 @@ class Tests(unittest.TestCase):
         c=Fake(); c.items=[dict(name=ROW['Email'],id='old',folder_id='elsewhere')]
         run([ROW],'batch',c,self.db())
         self.assertEqual(c.creates,1)
+    def test_proxy_validation_omits_profile_only_flag(self):
+        checked = validation_proxy(ROW['Proxy'])
+        self.assertNotIn('save_traffic', checked)
+        self.assertEqual(checked['password'],'pass:colon')
 
 if __name__=='__main__': unittest.main()

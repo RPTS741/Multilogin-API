@@ -58,6 +58,9 @@ class Tests(unittest.TestCase):
         checked = validation_proxy(ROW['Proxy'])
         self.assertNotIn('save_traffic', checked)
         self.assertEqual(checked['password'],'pass:colon')
+    def test_proxy_protocol_override(self):
+        self.assertEqual(proxy(ROW['Proxy'], 'socks5')['type'], 'socks5')
+        with self.assertRaises(FactoryError): proxy(ROW['Proxy'], 'ftp')
     def test_browser_error_is_safely_classified(self):
         error=Exception('page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://secret.example/path')
         self.assertEqual(safe_browser_error(error),'ERR_TUNNEL_CONNECTION_FAILED')

@@ -178,15 +178,14 @@ async def execute(args, rows, token, db):
         if not jobs:
             print('All requested profiles are already warmed.')
             return
-        # Prove the whole launch/attach/browse/stop path on one profile before
-        # committing the remaining batch to a long unattended run.
-        print('Starting one-profile preflight (about 6 minutes). Do not close the Multilogin window.',flush=True)
-        first_status = await worker(*jobs[0])
-        if first_status != 'completed':
-            raise FactoryError('Preflight profile failed. Remaining profiles were not attempted.')
-        if len(jobs) > 1:
-            print(f'Preflight passed. Warming remaining {len(jobs)-1} profiles (3 at a time).',flush=True)
-            await asyncio.gather(*(worker(row,pid) for row,pid in jobs[1:]))
+        # A dead or expired proxy belongs to one profile and must not block the
+        # rest of the batch. Each worker still stops its own profile safely and
+        # records a sanitized failure for review.
+        print(f'Warming {len(jobs)} profiles (3 at a time). Failed proxies will be isolated.',flush=True)
+        statuses = await asyncio.gather(*(worker(row,pid) for row,pid in jobs))
+        completed = sum(status == 'completed' for status in statuses)
+        needs_review = len(statuses) - completed
+        print(f'Warming chunk finished: {completed} completed; {needs_review} need proxy review.',flush=True)
 
 def main():
     ap=argparse.ArgumentParser()

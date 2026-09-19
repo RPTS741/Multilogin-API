@@ -12,7 +12,7 @@ import sqlite3
 import sys
 import urllib.error
 import urllib.request
-from factory import FactoryError, load_rows, signature, proxy, Client
+from factory import FactoryError, load_rows, signature, proxy, notes, FLAGS, Client
 
 SITES = ['google.com','youtube.com','facebook.com','instagram.com','twitter.com',
          'amazon.com','reddit.com','bbc.co.uk','linkedin.com','wikipedia.org']
@@ -29,6 +29,26 @@ def validation_proxy(value):
     checked = proxy(value).copy()
     checked.pop('save_traffic', None)
     return checked
+
+def repair_profile_proxy(token, row, profile_id):
+    """Rewrite the exact CSV proxy using both supported profile API shapes."""
+    settings = proxy(row['Proxy'])
+    body = {
+        'profile_id': profile_id,
+        'name': row['Email'],
+        'notes': notes(row),
+        'proxy': settings.copy(),
+        'parameters': {
+            'flags': FLAGS.copy(),
+            'storage': {'is_local': False},
+            'fingerprint': {},
+            'proxy': settings.copy(),
+        },
+    }
+    try:
+        Client(token).call('/profile/update', body)
+    except FactoryError:
+        raise WarmStageError('profile_proxy_update', 'API rejected proxy repair') from None
 
 def safe_browser_error(exc):
     """Return a credential/URL-free browser failure category."""
@@ -72,6 +92,9 @@ def local_call(token, path, body=None, stage='launcher'):
     return result['data']
 
 async def visit_profile(pw, token, folder, profile_id, proxy_value, seconds):
+    # Profiles created by older importer releases may have persisted only one
+    # of Multilogin's accepted proxy shapes. Rewrite both before validation.
+    # The caller supplies the full row separately through proxy_value below.
     # Validate before starting; no direct-network fallback.
     # The launcher validation endpoint accepts only connection fields. The
     # create-profile endpoint additionally accepts save_traffic.
@@ -162,6 +185,7 @@ async def execute(args, rows, token, db):
             async with gate:
                 db.execute('INSERT INTO warming VALUES (?,?,?)',(pid,'running','[]')); db.commit()
                 try:
+                    await asyncio.to_thread(repair_profile_proxy, token, row, pid)
                     result=await visit_profile(pw,token,folder,pid,row['Proxy'],args.seconds)
                     status='completed' if len(result)==len(SITES) and all(x['status']=='visited' for x in result) else 'needs_review'
                 except WarmStageError as exc:

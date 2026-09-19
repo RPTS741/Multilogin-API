@@ -50,12 +50,14 @@ def load_rows(path, offset=0, count=50):
             raise FactoryError(f'CSV row {number}: notes exceed documented API limit (400).')
     return rows
 
-def proxy(value):
+def proxy(value, proxy_type='http'):
     fields = value.strip().split(':', 3)
     if len(fields) != 4 or not all(fields) or not fields[1].isdigit() or not 1 <= int(fields[1]) <= 65535:
         raise FactoryError('Invalid proxy format; expected host:port:username:password.')
+    if proxy_type not in ('http', 'https', 'socks5'):
+        raise FactoryError('Unsupported proxy protocol.')
     return dict(host=fields[0], port=int(fields[1]), username=fields[2],
-                password=fields[3], type='http', save_traffic=False)
+                password=fields[3], type=proxy_type, save_traffic=False)
 
 def notes(row):
     return '\n'.join(f'{k}: {v}' for k, v in row.items() if k not in ('Email', 'Proxy'))

@@ -48,9 +48,9 @@ class Tests(unittest.TestCase):
         c=Fake(); d=self.db(); run([ROW],'batch',c,d)
         with self.assertRaises(FactoryError): run([dict(ROW,Proxy='other:80:u:p')],'batch',c,d)
         self.assertEqual(c.creates,1)
-    def test_existing_outside_folder_stops(self):
+    def test_existing_outside_folder_does_not_block_batch(self):
         c=Fake(); c.items=[dict(name=ROW['Email'],id='old',folder_id='elsewhere')]
-        with self.assertRaises(FactoryError): run([ROW],'batch',c,self.db())
-        self.assertEqual(c.creates,0)
+        run([ROW],'batch',c,self.db())
+        self.assertEqual(c.creates,1)
 
 if __name__=='__main__': unittest.main()

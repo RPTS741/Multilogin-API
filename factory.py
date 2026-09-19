@@ -109,15 +109,13 @@ def run(rows, folder_name, client, db):
     if len(matches) > 1:
         raise FactoryError('Multiple folders match; resolve the folder name first.')
     existing = client.profiles()
-    # Avoid creating a folder if this batch contains names in other folders.
+    # Names only need to be unique inside this managed batch. Matching names in
+    # unrelated legacy folders are deliberately ignored.
     folder_id = matches[0]['folder_id'] if matches else None
     by_name = {}
     for p in existing:
-        by_name.setdefault(p['name'].lower(), []).append(p)
-    for row in rows:
-        found = by_name.get(row['Email'].lower(), [])
-        if found and (len(found) != 1 or found[0]['folder_id'] != folder_id):
-            raise FactoryError('A requested email already exists outside this batch, or has duplicate profiles. No writes made.')
+        if folder_id is not None and p['folder_id'] == folder_id:
+            by_name.setdefault(p['name'].lower(), []).append(p)
     if folder_id is None:
         folder_id = client.call('/workspace/folder_create',
             {'name': folder_name, 'comment': 'CSV profile batch; exact email/proxy pairing.'})['id']

@@ -1,6 +1,6 @@
 import sqlite3
 import unittest
-from warm import validation_proxy
+from warm import safe_browser_error, validation_proxy
 from factory import FLAGS, FactoryError, notes, payload, proxy, run
 
 ROW = dict(Email='test@example.com', Password='secret', Proxy='example.com:8080:user:pass:colon', CODE='', PhoneNumber='00123')
@@ -57,5 +57,9 @@ class Tests(unittest.TestCase):
         checked = validation_proxy(ROW['Proxy'])
         self.assertNotIn('save_traffic', checked)
         self.assertEqual(checked['password'],'pass:colon')
+    def test_browser_error_is_safely_classified(self):
+        error=Exception('page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://secret.example/path')
+        self.assertEqual(safe_browser_error(error),'ERR_TUNNEL_CONNECTION_FAILED')
+        self.assertNotIn('secret',safe_browser_error(error))
 
 if __name__=='__main__': unittest.main()

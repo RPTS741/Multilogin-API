@@ -30,6 +30,18 @@ def validation_proxy(value):
     checked.pop('save_traffic', None)
     return checked
 
+def safe_browser_error(exc):
+    """Return a credential/URL-free browser failure category."""
+    message = str(exc)
+    match = re.search(r'net::(ERR_[A-Z0-9_]+)', message)
+    if match:
+        return match.group(1)
+    if re.search(r'timeout', message, re.I):
+        return 'TIMEOUT'
+    if re.search(r'(page|context|browser).{0,30}closed', message, re.I):
+        return 'BROWSER_CLOSED'
+    return 'NAVIGATION_ERROR'
+
 def local_call(token, path, body=None, stage='launcher'):
     req = urllib.request.Request(LAUNCHER+path,
         data=None if body is None else json.dumps(body).encode(),
@@ -88,9 +100,12 @@ async def visit_profile(pw, token, folder, profile_id, proxy_value, seconds):
             for site in SITES:
                 try:
                     response=await page.goto('https://'+site,wait_until='domcontentloaded',timeout=45000)
+                except Exception as exc:
+                    raise WarmStageError('site_visit', f'{site}: {safe_browser_error(exc)}') from None
+                try:
                     text=(await page.locator('body').inner_text())[:30000].lower()
                 except Exception:
-                    raise WarmStageError('site_visit', f'{site} did not load') from None
+                    raise WarmStageError('site_visit', f'{site}: BODY_UNAVAILABLE') from None
                 if (response and response.status in (403,429)) or re.search(
                     r'verify (?:that )?you are human|unusual traffic|checking your browser|automated queries|complete the captcha',text):
                     results.append({'site':site,'status':'blocked'})

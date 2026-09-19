@@ -10,6 +10,7 @@ import urllib.request
 import urllib.error
 import re
 import ctypes
+import time
 
 CLIENT_HEADERS={'Content-Type':'application/json','Accept':'application/json',
                 'User-Agent':'Multilogin-API-Client/1.0'}
@@ -18,26 +19,35 @@ def sign_in(email, password):
     """Return a short-lived sign-in token without persisting credentials."""
     payload=json.dumps({'email':email,'password':hashlib.md5(password.encode()).hexdigest()}).encode()
     headers=CLIENT_HEADERS.copy()
-    req=urllib.request.Request('https://api.multilogin.com/user/signin',data=payload,headers=headers)
-    try:
-        with urllib.request.urlopen(req,timeout=45) as response:
-            result=json.load(response)
-        token=result.get('data',{}).get('token')
-        if not isinstance(token,str) or not token:
-            raise SystemExit('Authentication did not return a token. Nothing was changed.')
-        return token
-    except urllib.error.HTTPError as exc:
-        detail='No structured error code returned'
+    for attempt in range(5):
+        req=urllib.request.Request('https://api.multilogin.com/user/signin',data=payload,headers=headers)
         try:
-            body=json.loads(exc.read(16384))
-            code=body.get('status',{}).get('error_code')
-            if isinstance(code,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,80}',code):
-                detail='API error code: '+code
-        except (ValueError,AttributeError):
-            pass
-        raise SystemExit('Sign-in failed (HTTP %s). %s. Nothing was changed.' % (exc.code,detail)) from None
-    except (urllib.error.URLError,TimeoutError,ValueError):
-        raise SystemExit('Could not complete Multilogin authentication. Nothing was changed.') from None
+            with urllib.request.urlopen(req,timeout=45) as response:
+                result=json.load(response)
+            token=result.get('data',{}).get('token')
+            if not isinstance(token,str) or not token:
+                raise SystemExit('Authentication did not return a token. Nothing was changed.')
+            return token
+        except urllib.error.HTTPError as exc:
+            if 500 <= exc.code < 600 and attempt < 4:
+                print(f'Multilogin sign-in service returned HTTP {exc.code}; retrying automatically.',flush=True)
+                time.sleep(2 ** (attempt + 1))
+                continue
+            detail='No structured error code returned'
+            try:
+                body=json.loads(exc.read(16384))
+                code=body.get('status',{}).get('error_code')
+                if isinstance(code,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,80}',code):
+                    detail='API error code: '+code
+            except (ValueError,AttributeError):
+                pass
+            raise SystemExit('Sign-in failed (HTTP %s). %s. Nothing was changed.' % (exc.code,detail)) from None
+        except (urllib.error.URLError,TimeoutError,ValueError):
+            if attempt < 4:
+                print('Multilogin sign-in service unavailable; retrying automatically.',flush=True)
+                time.sleep(2 ** (attempt + 1))
+                continue
+            raise SystemExit('Could not complete Multilogin authentication. Nothing was changed.') from None
 
 def login_credentials():
     print('Sign in locally. Credentials stay in memory only and are not saved.')

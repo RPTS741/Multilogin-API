@@ -8,6 +8,7 @@ import hashlib
 import json
 import urllib.request
 import urllib.error
+import re
 
 def login_token():
     print('Sign in locally to obtain a 24-hour automation token. Credentials are not saved.')
@@ -18,6 +19,7 @@ def login_token():
     payload=json.dumps({'email':email,'password':hashlib.md5(password.encode()).hexdigest()}).encode()
     del password
     def request(path, data=None, bearer=None):
+        stage='Sign-in' if path=='/user/signin' else 'Automation token creation'
         headers={'Content-Type':'application/json','Accept':'application/json'}
         if bearer: headers['Authorization']='Bearer '+bearer
         req=urllib.request.Request('https://api.multilogin.com'+path,data=data,headers=headers)
@@ -29,7 +31,15 @@ def login_token():
                 raise SystemExit('Authentication did not return a token. Nothing created; send this message, not your credentials.')
             return token
         except urllib.error.HTTPError as exc:
-            raise SystemExit('Multilogin authentication stopped (HTTP %s). Nothing created.' % exc.code) from None
+            detail='No structured error code returned'
+            try:
+                body=json.loads(exc.read(16384))
+                code=body.get('status',{}).get('error_code')
+                if isinstance(code,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,80}',code):
+                    detail='API error code: '+code
+            except (ValueError,AttributeError):
+                pass
+            raise SystemExit('%s failed (HTTP %s). %s. Nothing created.' % (stage,exc.code,detail)) from None
         except (urllib.error.URLError,TimeoutError,ValueError):
             raise SystemExit('Could not complete Multilogin authentication. Nothing created.') from None
     bearer=request('/user/signin',payload)
